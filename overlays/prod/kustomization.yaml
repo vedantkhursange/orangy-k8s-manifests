@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: orangy-prod
+
+# Image tag to be replaced by Jenkins CI
+images:
+  - name: backend-image
+    newName: ghcr.io/vedantkhursange/orangy-backend
+    newTag: prod-latest
+
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: backend
+      spec:
+        replicas: 2
