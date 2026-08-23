@@ -11,6 +11,9 @@ images:
   - name: backend-image
     newName: ghcr.io/vedantkhursange/orangy-backend
     newTag: prod-latest
+  - name: frontend-image
+    newName: ghcr.io/vedantkhursange/orangy-frontend
+    newTag: prod-latest
 
 patches:
   - patch: |-
