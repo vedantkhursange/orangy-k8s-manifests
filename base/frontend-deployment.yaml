@@ -11,6 +11,8 @@ spec:
       labels:
         app: frontend
     spec:
+      imagePullSecrets:
+        - name: ghcr-login-secret
       containers:
         - name: frontend
           image: frontend-image
