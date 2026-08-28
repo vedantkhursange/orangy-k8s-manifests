@@ -40,6 +40,10 @@ spec:
               value: "true"
             - name: JWT_SECRET
               value: "orangy-dev-secret-key-that-is-at-least-256-bits-long-for-hs256"
+            - name: RAZORPAY_KEY_ID
+              value: "rzp_test_TV8pn0NbN9XiUs"
+            - name: RAZORPAY_KEY_SECRET
+              value: "go8eV60Ms8lz3YRY28RYZlGU"
           resources:
             requests:
               memory: "512Mi"
