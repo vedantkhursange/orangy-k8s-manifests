@@ -17,13 +17,16 @@ images:
     newTag: prod-latest
 
 patches:
+  # Single-node cluster: 2 replicas gave no real redundancy (both land on the
+  # same node) and starved dev of CPU to schedule its own pods. 1 until the
+  # cluster actually has more than one node.
   - patch: |-
       apiVersion: apps/v1
       kind: Deployment
       metadata:
         name: backend
       spec:
-        replicas: 2
+        replicas: 1
   # Dev's Services claim NodePorts 30080/30300 cluster-wide (NodePorts are
   # cluster-scoped, not per-namespace) — prod needs distinct ports so both
   # environments can coexist on the same cluster.
