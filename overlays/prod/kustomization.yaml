@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - ../../base
+  - namespace.yaml
 
 namespace: orangy-prod
 
@@ -23,3 +24,20 @@ patches:
         name: backend
       spec:
         replicas: 2
+  # Dev's Services claim NodePorts 30080/30300 cluster-wide (NodePorts are
+  # cluster-scoped, not per-namespace) — prod needs distinct ports so both
+  # environments can coexist on the same cluster.
+  - target:
+      kind: Service
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/ports/0/nodePort
+        value: 30081
+  - target:
+      kind: Service
+      name: frontend
+    patch: |-
+      - op: replace
+        path: /spec/ports/0/nodePort
+        value: 30301
