@@ -12,6 +12,9 @@
 #
 # Usage:  ./scripts/create-secrets.sh
 #
+# On the k3s node, kubectl needs sudo and is not on the ubuntu user's PATH:
+#   KUBECTL="sudo kubectl" ./create-secrets.sh
+#
 set -euo pipefail
 set +x   # never trace: this script handles secrets
 
@@ -22,11 +25,15 @@ SECRET_NAME="orangy-secrets"
 die() { printf '\n\033[31merror:\033[0m %s\n' "$1" >&2; exit 1; }
 note() { printf '\033[36m%s\033[0m\n' "$1"; }
 
-command -v kubectl >/dev/null || die "kubectl not found in PATH"
+# k3s installs kubectl under sudo, so allow the command to be overridden:
+#   KUBECTL="sudo kubectl" ./create-secrets.sh
+KUBECTL="${KUBECTL:-kubectl}"
+
+$KUBECTL version --client >/dev/null 2>&1 || die "'$KUBECTL' does not work. On the k3s node try: KUBECTL=\"sudo kubectl\" $0"
 command -v openssl >/dev/null || die "openssl not found in PATH"
 
 # ── confirm the target cluster before writing anything ──────────────────────
-CTX="$(kubectl config current-context 2>/dev/null)" || die "no kubectl context is set"
+CTX="$($KUBECTL config current-context 2>/dev/null)" || die "no kubectl context is set"
 printf '\nAbout to write the "%s" Secret into namespaces %s and %s\n' \
   "$SECRET_NAME" "$DEV_NS" "$PROD_NS"
 printf 'Cluster context: \033[1m%s\033[0m\n\n' "$CTX"
@@ -75,7 +82,7 @@ apply_secret() {
   local ns="$1" jwt="$2" cf="$3"
   # Built as YAML and piped in: keeps every value out of argv and off disk.
   # `apply` so re-running updates in place rather than failing on conflict.
-  kubectl apply -n "$ns" -f - >/dev/null <<YAML
+  $KUBECTL apply -n "$ns" -f - >/dev/null <<YAML
 apiVersion: v1
 kind: Secret
 metadata:
@@ -100,8 +107,8 @@ JWT_DEV="$(openssl rand -base64 48)"
 JWT_PROD="$(openssl rand -base64 48)"
 
 printf '\n'
-kubectl get namespace "$DEV_NS"  >/dev/null 2>&1 || die "namespace $DEV_NS does not exist"
-kubectl get namespace "$PROD_NS" >/dev/null 2>&1 || die "namespace $PROD_NS does not exist"
+$KUBECTL get namespace "$DEV_NS"  >/dev/null 2>&1 || die "namespace $DEV_NS does not exist"
+$KUBECTL get namespace "$PROD_NS" >/dev/null 2>&1 || die "namespace $PROD_NS does not exist"
 
 apply_secret "$DEV_NS"  "$JWT_DEV"  ""
 apply_secret "$PROD_NS" "$JWT_PROD" "$CF_TOKEN"
@@ -112,8 +119,8 @@ cat <<EOF
 
 Done. Verify (shows key names only, never values):
 
-  kubectl -n ${DEV_NS}  describe secret ${SECRET_NAME}
-  kubectl -n ${PROD_NS} describe secret ${SECRET_NAME}
+  ${KUBECTL} -n ${DEV_NS}  describe secret ${SECRET_NAME}
+  ${KUBECTL} -n ${PROD_NS} describe secret ${SECRET_NAME}
 
 Next:
   1. Push the manifests repo — orangy-dev auto-syncs and now has its Secret.
