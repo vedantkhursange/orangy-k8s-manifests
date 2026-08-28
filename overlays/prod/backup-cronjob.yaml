@@ -1,0 +1,121 @@
+# Nightly logical backups for Postgres and Mongo.
+#
+# This is the minimum an order database needs: before this existed, the whole
+# shop's orders lived on a single 1Gi PVC on a single node with no dump, no
+# snapshot and no way back from an accidental DROP or a bad schema migration.
+#
+# Dumps land on a dedicated PVC and are pruned after RETENTION_DAYS. That
+# protects against logical loss (bad migration, accidental delete) but NOT
+# against losing the node — see NOTE below.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-backups
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+spec:
+  # 02:15 UTC ≈ 07:45 IST — after the overnight lull, before the day starts.
+  schedule: "15 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-dump
+              # matches postgres:15 in postgres-statefulset.yaml
+              image: postgres:15-alpine
+              env:
+                - name: PGHOST
+                  value: "postgres"
+                - name: PGUSER
+                  value: "postgres"
+                - name: PGPASSWORD
+                  value: "postgres"
+                - name: PGDATABASE
+                  value: "orangydb"
+                - name: RETENTION_DAYS
+                  value: "14"
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+                  OUT="/backups/postgres/orangydb-${STAMP}.sql.gz"
+                  mkdir -p /backups/postgres
+                  echo "dumping ${PGDATABASE} -> ${OUT}"
+                  # --clean so the dump can be restored over an existing DB
+                  pg_dump --clean --if-exists | gzip -9 > "${OUT}.partial"
+                  # only publish under the final name once the dump succeeded,
+                  # so a half-written file is never mistaken for a good backup
+                  mv "${OUT}.partial" "${OUT}"
+                  echo "pruning dumps older than ${RETENTION_DAYS} days"
+                  find /backups/postgres -name '*.sql.gz' -mtime "+${RETENTION_DAYS}" -delete
+                  find /backups/postgres -name '*.partial' -mtime +1 -delete
+                  ls -lh "${OUT}"
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: db-backups
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mongo-backup
+spec:
+  schedule: "35 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: mongodump
+              image: mongo:7
+              env:
+                - name: MONGO_URI
+                  value: "mongodb://mongo:27017/orangy_media"
+                - name: RETENTION_DAYS
+                  value: "14"
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+                  OUT="/backups/mongo/orangy_media-${STAMP}.archive.gz"
+                  mkdir -p /backups/mongo
+                  echo "dumping ${MONGO_URI} -> ${OUT}"
+                  mongodump --uri="${MONGO_URI}" --archive="${OUT}.partial" --gzip
+                  mv "${OUT}.partial" "${OUT}"
+                  echo "pruning dumps older than ${RETENTION_DAYS} days"
+                  find /backups/mongo -name '*.archive.gz' -mtime "+${RETENTION_DAYS}" -delete
+                  find /backups/mongo -name '*.partial' -mtime +1 -delete
+                  ls -lh "${OUT}"
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: db-backups

@@ -58,6 +58,35 @@ spec:
                 secretKeyRef:
                   name: orangy-secrets
                   key: razorpay-key-secret
+            # OTP login goes out over SMTP, so these are load-bearing for
+            # sign-in. Previously they came from a Gmail app password hardcoded
+            # in application.yml — in a public repo. Required, so a
+            # misconfiguration fails the rollout instead of silently breaking
+            # every login.
+            - name: MAIL_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: orangy-secrets
+                  key: mail-username
+            - name: MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: orangy-secrets
+                  key: mail-password
+            # Optional: absent means DataSeeder creates no admin at all, which
+            # is the safe outcome. Only needed on a fresh database.
+            - name: ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: orangy-secrets
+                  key: admin-email
+                  optional: true
+            - name: ADMIN_DEFAULT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: orangy-secrets
+                  key: admin-password
+                  optional: true
           resources:
             requests:
               memory: "512Mi"
@@ -65,13 +94,29 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "500m"
+          # A TCP check on 8080 passed as soon as Tomcat bound the port, even
+          # if Postgres, Mongo or Redis were unreachable — so a backend that
+          # could not serve a single request still counted as Ready. These
+          # check the actual dependency health via Actuator.
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /actuator/health/readiness
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /actuator/health/liveness
               port: 8080
             initialDelaySeconds: 60
             periodSeconds: 30
+            failureThreshold: 3
+          # Gives a slow JVM boot up to 3 minutes before liveness starts
+          # counting, without making liveness itself sluggish.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 18

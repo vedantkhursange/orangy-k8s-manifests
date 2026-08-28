@@ -5,10 +5,23 @@ entries in `base/backend-deployment.yaml`, in a **public** repository. They now
 come from a Secret named `orangy-secrets`, created per namespace and never
 committed.
 
-> **Treat the previously committed values as leaked.** They were test
-> credentials, but they are in this repo's git history permanently. Rotate the
-> Razorpay test key pair in the Razorpay dashboard and generate a fresh JWT
-> secret before going live.
+> **Treat every previously committed value as leaked — some are live.**
+> They are in public git history permanently. Deleting them from the files does
+> not remove them from history.
+>
+> Revoke and rotate, in this order of urgency:
+>
+> 1. **Gmail app password** `gddu hlzk lkhh yten` for `khursangevedant@gmail.com`,
+>    which was hardcoded as the default in `application.yml` in the public
+>    `Orangy` repo. Revoke it at <https://myaccount.google.com/apppasswords> and
+>    issue a new one. This grants send-as access to a personal mailbox.
+> 2. **The seeded admin account.** `DataSeeder` hardcoded
+>    `admin@orangy.com` / `admin123` and created it on every boot, so any
+>    deployed environment has an admin with publicly known credentials. Change
+>    that password (or delete the row) in each environment's database now.
+> 3. **Razorpay test key pair** — rotate in the Razorpay dashboard.
+> 4. **JWT signing secret** — generate a fresh one per environment. Rotating it
+>    invalidates existing sessions, which is expected.
 
 ## Order matters
 
@@ -34,6 +47,8 @@ kubectl -n orangy-dev create secret generic orangy-secrets \
   --from-literal=jwt-secret='<fresh-random-secret>' \
   --from-literal=razorpay-key-id='<rzp_test_...>' \
   --from-literal=razorpay-key-secret='<rotated-test-secret>' \
+  --from-literal=mail-username='<gmail-address>' \
+  --from-literal=mail-password='<NEW-gmail-app-password>' \
   --from-literal=cloudflared-token=''
 ```
 
@@ -42,8 +57,18 @@ kubectl -n orangy-prod create secret generic orangy-secrets \
   --from-literal=jwt-secret='<different-fresh-random-secret>' \
   --from-literal=razorpay-key-id='<rzp_test_...>' \
   --from-literal=razorpay-key-secret='<rotated-test-secret>' \
+  --from-literal=mail-username='<gmail-address>' \
+  --from-literal=mail-password='<NEW-gmail-app-password>' \
   --from-literal=cloudflared-token='<tunnel-token-from-step-2>'
 ```
+
+`mail-username` / `mail-password` are **required** — OTP sign-in is delivered
+over SMTP, so the backend will not start without them. That is deliberate: a
+missing value fails the rollout instead of silently breaking every login.
+
+`admin-email` / `admin-password` are optional and only needed on a fresh
+database. Add them with `kubectl edit secret` if you ever need the seeder to
+create an admin; the seeder refuses passwords under 12 characters.
 
 Use a **different** JWT secret per environment; a shared one means a dev token
 is valid in prod. Rotating it invalidates existing sessions, which is expected.

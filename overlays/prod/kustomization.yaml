@@ -6,6 +6,9 @@ resources:
   - namespace.yaml
   # Cloudflare Tunnel: serves orangeexpress.in without opening inbound ports.
   - cloudflared.yaml
+  # Nightly pg_dump / mongodump. Prod only — dev doesn't warrant the PVC on a
+  # single-node cluster.
+  - backup-cronjob.yaml
 
 namespace: orangy-prod
 
