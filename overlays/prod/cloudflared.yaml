@@ -1,0 +1,59 @@
+# Cloudflare Tunnel — how orangeexpress.in reaches this cluster.
+#
+# Why a tunnel rather than an A record to the node:
+#   * Cloudflare's proxy only accepts a fixed set of ports (80/443/8080/8443/…).
+#     The prod frontend is a NodePort on 30301, which is NOT proxyable, so a
+#     plain A record could not sit behind Cloudflare.
+#   * The tunnel dials OUT to Cloudflare, so no inbound ports need opening in
+#     the Oracle security list and the node's public IP is never exposed.
+#
+# Traffic path:
+#   orangeexpress.in → Cloudflare edge → tunnel → Service frontend:80 → :3000
+#
+# The frontend proxies /backend/* to the in-cluster backend Service itself
+# (see next.config.ts), so the backend needs no public route of its own.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  labels:
+    app: cloudflared
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2025.1.0
+          args:
+            - tunnel
+            - --no-autoupdate
+            - --metrics
+            - 0.0.0.0:2000
+            - run
+          env:
+            # Created out-of-band from the Cloudflare dashboard — never committed.
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: orangy-secrets
+                  key: cloudflared-token
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 30

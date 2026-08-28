@@ -38,12 +38,26 @@ spec:
               value: "update"
             - name: SPRING_JPA_SHOW_SQL
               value: "true"
+            # These were committed here in plaintext, in a public repo. They now
+            # come from the `orangy-secrets` Secret, which is created per
+            # namespace and never committed — see overlays/prod/SECRETS.md.
+            # NOTE: the previously committed values must be treated as leaked
+            # and rotated, even though they were test credentials.
             - name: JWT_SECRET
-              value: "orangy-dev-secret-key-that-is-at-least-256-bits-long-for-hs256"
+              valueFrom:
+                secretKeyRef:
+                  name: orangy-secrets
+                  key: jwt-secret
             - name: RAZORPAY_KEY_ID
-              value: "rzp_test_TV8pn0NbN9XiUs"
+              valueFrom:
+                secretKeyRef:
+                  name: orangy-secrets
+                  key: razorpay-key-id
             - name: RAZORPAY_KEY_SECRET
-              value: "go8eV60Ms8lz3YRY28RYZlGU"
+              valueFrom:
+                secretKeyRef:
+                  name: orangy-secrets
+                  key: razorpay-key-secret
           resources:
             requests:
               memory: "512Mi"

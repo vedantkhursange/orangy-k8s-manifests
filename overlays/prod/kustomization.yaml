@@ -4,6 +4,8 @@ kind: Kustomization
 resources:
   - ../../base
   - namespace.yaml
+  # Cloudflare Tunnel: serves orangeexpress.in without opening inbound ports.
+  - cloudflared.yaml
 
 namespace: orangy-prod
 
@@ -17,6 +19,9 @@ images:
     newTag: prod-latest
 
 patches:
+  # Real prod config + secrets pulled from `orangy-prod-secrets` instead of
+  # being committed in plaintext. See backend-prod-patch.yaml and SECRETS.md.
+  - path: backend-prod-patch.yaml
   # Single-node cluster: 2 replicas gave no real redundancy (both land on the
   # same node) and starved dev of CPU to schedule its own pods. 1 until the
   # cluster actually has more than one node.

@@ -1,0 +1,48 @@
+# Production configuration for the backend.
+#
+# Two things this fixes:
+#
+# 1. The base deployment pins SPRING_PROFILES_ACTIVE=dev, so prod was running
+#    the dev profile (DEBUG logging, show-sql on). It could not simply be
+#    flipped, because application-prod.yml reads DATABASE_URL / MONGODB_URI /
+#    REDIS_HOST, while the base supplies the SPRING_DATASOURCE_* names. Both
+#    sets are provided here so the config resolves whichever source wins
+#    (env vars outrank application-*.yml in Spring's property order).
+#
+# 2. The JWT secret, Razorpay keys and DB password were committed in plaintext
+#    in base/backend-deployment.yaml — in a PUBLIC repo. They now come from the
+#    `orangy-prod-secrets` Secret, which is created out-of-band and never
+#    committed. See SECRETS.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"
+            - name: SPRING_JPA_SHOW_SQL
+              value: "false"
+
+            # names read by application-prod.yml
+            - name: DATABASE_URL
+              value: "jdbc:postgresql://postgres:5432/orangydb"
+            - name: DATABASE_USERNAME
+              value: "postgres"
+            # cluster-internal Postgres; POSTGRES_PASSWORD only applies at
+            # first init, so rotating it needs a DB-side password change too
+            - name: DATABASE_PASSWORD
+              value: "postgres"
+            - name: MONGODB_URI
+              value: "mongodb://mongo:27017/orangy_media"
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+
+            # JWT_SECRET and the Razorpay keys come from the `orangy-secrets`
+            # Secret via base/backend-deployment.yaml — not repeated here.
