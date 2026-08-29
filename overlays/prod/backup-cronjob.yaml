@@ -98,7 +98,13 @@ spec:
                 - name: RETENTION_DAYS
                   value: "14"
               command:
-                - /bin/sh
+                # mongo:7 is Debian-based; its /bin/sh is dash, which doesn't
+                # support `set -o pipefail` and fails the job outright before
+                # the dump even starts. postgres:15-alpine's busybox sh does
+                # support it, so that job is unaffected. Caught live: this
+                # job had never run successfully (never scheduled yet), first
+                # manual trigger failed instantly on `set -euo pipefail`.
+                - /bin/bash
                 - -c
                 - |
                   set -euo pipefail
